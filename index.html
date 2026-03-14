@@ -1,57 +1,197 @@
-<h2>Members 51-Week Table</h2>
-<div id="membersContainer"></div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liberty Gad Susu Enterprise - Collector Dashboard</title>
+<style>
+body { font-family: Arial, sans-serif; margin:20px; background:#f9f9f9; }
+h1, h2 { color:#2c3e50; }
+table { width: 100%; border-collapse: collapse; margin-top:20px; background:white; }
+th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+th { background:#2c3e50; color:white; }
+tr:nth-child(even) { background:#f2f2f2; }
+input { padding:5px; margin:5px; }
+button { padding:5px 10px; margin:5px; cursor:pointer; }
+.penalty { color:red; font-weight:bold; }
+.daily-total { font-weight:bold; background:#f39c12; color:white; }
+</style>
+</head>
+<body>
+
+<h1>Liberty Gad Susu Enterprise - Collector Dashboard</h1>
+
+<!-- Add Member -->
+<div>
+  <h3>Add New Member</h3>
+  <input id="newMemberName" placeholder="Member Name">
+  <input id="newMemberPhone" placeholder="Phone Number">
+  <button onclick="addMember()">Add Member</button>
+</div>
+
+<!-- Search -->
+<div>
+  <h3>Search Members</h3>
+  <input id="searchQuery" placeholder="Search by name or phone" oninput="loadMembers()">
+</div>
+
+<!-- Record Payment -->
+<div>
+  <h3>Record Payment</h3>
+  <input id="member" placeholder="Member Name">
+  <input id="phone" placeholder="Phone Number">
+  <input id="weeks" type="number" placeholder="Weeks Paid">
+  <button onclick="recordPayment()">Record Payment</button>
+</div>
+
+<div id="result"></div>
+
+<h2>All Members</h2>
+<table id="membersTable">
+  <thead>
+    <tr>
+      <th>Member</th>
+      <th>Phone</th>
+      <th>Weeks Paid</th>
+      <th>Weekly Marks</th>
+      <th>Amount Today</th>
+      <th>G.Total</th>
+      <th>Penalty</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+  <tfoot>
+    <tr class="daily-total">
+      <td colspan="4">Daily Total</td>
+      <td id="dailyTotalAmount">0</td>
+      <td colspan="3"></td>
+    </tr>
+  </tfoot>
+</table>
 
 <script>
 const backendURL = "https://liberty-gad-susu-backend.gadesesamuel35.workers.dev";
 const weeklyRate = 50;
 
-async function loadMembers() {
-  const res = await fetch(`${backendURL}/members`);
-  const members = await res.json();
+// Add a new member
+async function addMember() {
+  const name = document.getElementById("newMemberName").value.trim();
+  const phone = document.getElementById("newMemberPhone").value.trim();
+  if(!name || !phone) { alert("Fill all fields!"); return; }
 
-  const container = document.getElementById("membersContainer");
-  container.innerHTML = "";
-
-  members.forEach(member => {
-    const table = document.createElement("table");
-    table.border = "1";
-    table.style.marginBottom = "20px";
-
-    // Header row: Weeks 1 to 51
-    let header = "<tr><th>Member ID: " + member.id + " | " + member.name + "</th>";
-    for(let i=1;i<=51;i++){ header += "<th>"+i+"</th>"; }
-    header += "</tr>";
-
-    // Marks row
-    let row = "<tr><td>Marks</td>";
-    for(let i=1;i<=51;i++){
-      const mark = member.weeklyMarks[i] || "×";
-      row += `<td onclick="markWeek(${member.id}, ${i})" style="cursor:pointer">${mark}</td>`;
-    }
-    row += "</tr>";
-
-    table.innerHTML = header + row;
-    container.appendChild(table);
+  const res = await fetch(`${backendURL}/add-member`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, phone })
   });
+  const data = await res.json();
+  if(data.success){
+    alert("Member added successfully!");
+    document.getElementById("newMemberName").value = "";
+    document.getElementById("newMemberPhone").value = "";
+    loadMembers();
+  }
 }
 
-async function markWeek(memberId, weekNumber){
-  const weeks = prompt("How many weeks paid today?");
-  if(!weeks || isNaN(weeks)) return;
+// Delete member
+async function deleteMember(name){
+  if(!confirm(`Delete member ${name}?`)) return;
+  const res = await fetch(`${backendURL}/delete-member`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+  const data = await res.json();
+  if(data.success){
+    alert("Member deleted successfully!");
+    loadMembers();
+  }
+}
+
+// Record Payment
+async function recordPayment() {
+  const member = document.getElementById("member").value.trim();
+  const phone = document.getElementById("phone").value.trim();
+  const weeks = Number(document.getElementById("weeks").value);
+
+  if(!member || !phone || !weeks) { alert("Fill all fields!"); return; }
 
   const res = await fetch(`${backendURL}/pay`, {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ id: memberId, weeks: Number(weeks), weekNumber })
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ member, phone, weeks })
   });
 
   const data = await res.json();
-  if(data.success){
-    alert(`Payment recorded!\nMarks: ${data.mark}\nAmount: GHS${data.amount}\nG.Total: GHS${data.gTotal}${data.penalty ? "\nPenalty: No interest" : ""}`);
-    loadMembers(); // refresh table
-  }
+
+  document.getElementById("result").innerHTML = `
+    Payment Recorded<br>
+    Marks Today: ${data.mark}<br>
+    Amount Today: GHS${data.amount}<br>
+    G.Total: GHS${data.gTotal}<br>
+    ${data.penalty ? '<span class="penalty">Penalty: Member not eligible for interest</span>' : 'Eligible for interest'}
+  `;
+
+  loadMembers();
+}
+
+// Load All Members
+async function loadMembers() {
+  const searchQuery = document.getElementById("searchQuery").value.toLowerCase();
+  const res = await fetch(`${backendURL}/members`);
+  const members = await res.json();
+
+  const tbody = document.querySelector("#membersTable tbody");
+  tbody.innerHTML = "";
+
+  let dailyTotal = 0;
+
+  members
+    .filter(m => m.name.toLowerCase().includes(searchQuery) || m.phone.includes(searchQuery))
+    .forEach(m => {
+      const weeklyMarks = Object.entries(m.weeklyMarks || {})
+                                .sort((a,b)=>a[0]-b[0])
+                                .map(w=>`W${w[0]}:${w[1]}`).join(" | ");
+
+      // Amount today is latest week's payment
+      const weekNumbers = Object.keys(m.weeklyMarks || {}).map(Number);
+      let amountToday = 0;
+      if(weekNumbers.length > 0){
+        const lastWeek = Math.max(...weekNumbers);
+        const marksCount = m.weeklyMarks[lastWeek].length;
+        amountToday = marksCount * weeklyRate;
+      }
+      dailyTotal += amountToday;
+
+      // Penalty: missed 5+ weeks
+      const currentWeekNumber = new Date().getTime() - new Date("2026-01-03").getTime();
+      const weekNumber = Math.floor(currentWeekNumber / (7*24*60*60*1000)) + 1;
+      const missedWeeks = weekNumber - m.weeksPaid;
+      const penaltyText = (missedWeeks >= 5) ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${m.name}</td>
+        <td>${m.phone}</td>
+        <td>${m.weeksPaid}</td>
+        <td>${weeklyMarks}</td>
+        <td>GHS${amountToday}</td>
+        <td>GHS${m.gTotal}</td>
+        <td>${penaltyText}</td>
+        <td>
+          <button onclick="deleteMember('${m.name}')">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+  document.getElementById("dailyTotalAmount").innerText = `GHS${dailyTotal}`;
 }
 
 // Initial load
 loadMembers();
 </script>
+
+</body>
+</html>
