@@ -1,31 +1,115 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Liberty Gad Susu Enterprise</title>
-<link rel="stylesheet" href="style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liberty Gad Susu Enterprise - Collector Dashboard</title>
+<style>
+body { font-family: Arial, sans-serif; margin:20px; background:#f9f9f9; }
+h1 { color:#2c3e50; }
+table { width: 100%; border-collapse: collapse; margin-top:20px; background:white; }
+th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+th { background:#2c3e50; color:white; }
+tr:nth-child(even) { background:#f2f2f2; }
+button { padding:5px 10px; margin:5px; cursor:pointer; }
+input { padding:5px; margin:5px; }
+.penalty { color:red; font-weight:bold; }
+</style>
 </head>
-
 <body>
 
-<h1>Liberty Gad Susu Enterprise</h1>
-<h2>Collector Dashboard</h2>
+<h1>Liberty Gad Susu Enterprise - Collector Dashboard</h1>
 
-<label>Member Name</label>
-<input id="member" placeholder="Enter member name">
+<div>
+  <input id="member" placeholder="Member Name">
+  <input id="phone" placeholder="Phone Number">
+  <input id="weeks" type="number" placeholder="Weeks Paid">
+  <button onclick="recordPayment()">Record Payment</button>
+</div>
 
-<label>Phone Number</label>
-<input id="phone" placeholder="Enter phone number">
+<div id="result"></div>
 
-<label>Weeks Paid</label>
-<input id="weeks" type="number" placeholder="Weeks paid today">
+<h2>All Members</h2>
+<table id="membersTable">
+  <thead>
+    <tr>
+      <th>Member</th>
+      <th>Phone</th>
+      <th>Weeks Paid</th>
+      <th>Weekly Marks</th>
+      <th>Amount Today</th>
+      <th>G.Total</th>
+      <th>Penalty</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
 
-<button onclick="recordPayment()">Record Payment</button>
+<script>
+const backendURL = "https://liberty-gad-susu-backend.gadesesamuel35.workers.dev";
 
-<h3 id="result"></h3>
+// Record Payment
+async function recordPayment() {
+  const member = document.getElementById("member").value.trim();
+  const phone = document.getElementById("phone").value.trim();
+  const weeks = Number(document.getElementById("weeks").value);
 
-<script src="app.js"></script>
+  if(!member || !phone || !weeks) {
+    alert("Fill all fields!");
+    return;
+  }
+
+  const res = await fetch(`${backendURL}/pay`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ member, phone, weeks })
+  });
+
+  const data = await res.json();
+
+  document.getElementById("result").innerHTML = `
+    Payment Recorded<br>
+    Marks Today: ${data.mark}<br>
+    Amount Today: GHS${data.amount}<br>
+    G.Total: GHS${data.gTotal}<br>
+    ${data.penalty ? '<span class="penalty">Penalty: Member not eligible for interest</span>' : 'Eligible for interest'}
+  `;
+
+  loadMembers(); // refresh table
+}
+
+// Load All Members
+async function loadMembers() {
+  const res = await fetch(`${backendURL}/members`);
+  const members = await res.json();
+
+  const tbody = document.querySelector("#membersTable tbody");
+  tbody.innerHTML = "";
+
+  members.forEach(m => {
+    const weeklyMarks = Object.entries(m.weeklyMarks || {})
+                              .sort((a,b)=>a[0]-b[0])
+                              .map(w=>`W${w[0]}:${w[1]}`).join(" | ");
+
+    const penaltyText = (Object.keys(m.weeklyMarks || {}).length < 5) ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${m.name}</td>
+      <td>${m.phone}</td>
+      <td>${m.weeksPaid}</td>
+      <td>${weeklyMarks}</td>
+      <td>-</td>
+      <td>GHS${m.gTotal}</td>
+      <td>${penaltyText}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Initial load
+loadMembers();
+</script>
 
 </body>
 </html>
