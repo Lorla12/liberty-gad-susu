@@ -24,8 +24,10 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
 <!-- Add Member -->
 <div>
   <h3>Add New Member</h3>
+  <input id="newMemberId" placeholder="ID Number">
   <input id="newMemberName" placeholder="Member Name">
   <input id="newMemberPhone" placeholder="Phone Number">
+  <input id="newMemberRate" type="number" placeholder="Weekly Contribution">
   <button onclick="addMember()">Add Member</button>
 </div>
 
@@ -52,6 +54,7 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
       <th>ID</th>
       <th>Member</th>
       <th>Phone</th>
+      <th>Weekly Contribution</th>
       <th>Weeks Paid</th>
       <th>Weekly Marks</th>
       <th>Amount Today</th>
@@ -63,7 +66,7 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
   <tbody></tbody>
   <tfoot>
     <tr class="daily-total">
-      <td colspan="5">Daily Total</td>
+      <td colspan="6">Daily Total</td>
       <td id="dailyTotalAmount">0</td>
       <td colspan="3"></td>
     </tr>
@@ -72,25 +75,31 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
 
 <script>
 const backendURL = "https://liberty-gad-susu-backend.gadesesamuel35.workers.dev";
-const weeklyRate = 50;
 
-// Add a new member
+// Add Member
 async function addMember() {
+  const id = document.getElementById("newMemberId").value.trim();
   const name = document.getElementById("newMemberName").value.trim();
   const phone = document.getElementById("newMemberPhone").value.trim();
-  if(!name || !phone) { alert("Fill all fields!"); return; }
+  const weeklyRate = Number(document.getElementById("newMemberRate").value);
+
+  if(!id || !name || !phone || !weeklyRate){ alert("Fill all fields!"); return; }
 
   const res = await fetch(`${backendURL}/add-member`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, phone })
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ id, name, phone, weeklyRate })
   });
   const data = await res.json();
   if(data.success){
-    alert("Member added successfully! ID: " + data.id);
+    alert("Member added successfully!");
+    document.getElementById("newMemberId").value = "";
     document.getElementById("newMemberName").value = "";
     document.getElementById("newMemberPhone").value = "";
+    document.getElementById("newMemberRate").value = "";
     loadMembers();
+  } else {
+    alert(data.message);
   }
 }
 
@@ -98,31 +107,27 @@ async function addMember() {
 async function deleteMember(id){
   if(!confirm(`Delete member ${id}?`)) return;
   const res = await fetch(`${backendURL}/delete-member`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
     body: JSON.stringify({ id })
   });
   const data = await res.json();
-  if(data.success){
-    alert("Member deleted successfully!");
-    loadMembers();
-  }
+  if(data.success) loadMembers();
 }
 
 // Record Payment
 async function recordPayment() {
   const id = document.getElementById("memberId").value.trim();
   const weeks = Number(document.getElementById("weeks").value);
-
-  if(!id || !weeks) { alert("Fill all fields!"); return; }
+  if(!id || !weeks){ alert("Fill all fields!"); return; }
 
   const res = await fetch(`${backendURL}/pay`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
     body: JSON.stringify({ id, weeks })
   });
-
   const data = await res.json();
+  if(!data.success){ alert(data.message); return; }
 
   document.getElementById("result").innerHTML = `
     Payment Recorded<br>
@@ -131,11 +136,10 @@ async function recordPayment() {
     G.Total: GHS${data.gTotal}<br>
     ${data.penalty ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible for interest'}
   `;
-
   loadMembers();
 }
 
-// Load All Members
+// Load Members
 async function loadMembers() {
   const searchQuery = document.getElementById("searchQuery").value.toLowerCase();
   const res = await fetch(`${backendURL}/members`);
@@ -143,47 +147,39 @@ async function loadMembers() {
 
   const tbody = document.querySelector("#membersTable tbody");
   tbody.innerHTML = "";
-
   let dailyTotal = 0;
 
-  members
-    .filter(m => m.name.toLowerCase().includes(searchQuery) || m.phone.includes(searchQuery))
-    .forEach(m => {
-      const weeklyMarks = Object.entries(m.weeklyMarks || {})
-                                .sort((a,b)=>a[0]-b[0])
-                                .map(w=>`W${w[0]}:${w[1]}`).join(" | ");
+  members.filter(m => m.name.toLowerCase().includes(searchQuery) || m.phone.includes(searchQuery)).forEach(m=>{
+    const weeklyMarks = Object.entries(m.weeklyMarks||{})
+                              .sort((a,b)=>a[0]-b[0])
+                              .map(w=>`W${w[0]}:${w[1]}`).join(" | ");
+    const weekNumbers = Object.keys(m.weeklyMarks||{}).map(Number);
+    let amountToday = 0;
+    if(weekNumbers.length > 0){
+      const lastWeek = Math.max(...weekNumbers);
+      amountToday = m.weeklyMarks[lastWeek].length * m.weeklyRate;
+    }
+    dailyTotal += amountToday;
 
-      // Amount today is latest week's payment
-      const weekNumbers = Object.keys(m.weeklyMarks || {}).map(Number);
-      let amountToday = 0;
-      if(weekNumbers.length > 0){
-        const lastWeek = Math.max(...weekNumbers);
-        const marksCount = m.weeklyMarks[lastWeek].length;
-        amountToday = marksCount * weeklyRate;
-      }
-      dailyTotal += amountToday;
+    const weekNumber = Math.floor((new Date().getTime()-new Date("2026-01-03").getTime())/(7*24*60*60*1000))+1;
+    const missedWeeks = weekNumber - m.weeksPaid;
+    const penaltyText = missedWeeks>=5 ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
 
-      // Penalty: missed 5+ weeks
-      const weekNumber = Math.floor((new Date().getTime() - new Date("2026-01-03").getTime()) / (7*24*60*60*1000)) + 1;
-      const missedWeeks = weekNumber - m.weeksPaid;
-      const penaltyText = (missedWeeks >= 5) ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
-
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${m.id}</td>
-        <td>${m.name}</td>
-        <td>${m.phone}</td>
-        <td>${m.weeksPaid}</td>
-        <td>${weeklyMarks}</td>
-        <td>GHS${amountToday}</td>
-        <td>GHS${m.gTotal}</td>
-        <td>${penaltyText}</td>
-        <td>
-          <button onclick="deleteMember('${m.id}')">Delete</button>
-        </td>
-      `;
-      tbody.appendChild(tr);
-    });
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${m.id}</td>
+      <td>${m.name}</td>
+      <td>${m.phone}</td>
+      <td>GHS${m.weeklyRate}</td>
+      <td>${m.weeksPaid}</td>
+      <td>${weeklyMarks}</td>
+      <td>GHS${amountToday}</td>
+      <td>GHS${m.gTotal}</td>
+      <td>${penaltyText}</td>
+      <td><button onclick="deleteMember('${m.id}')">Delete</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
 
   document.getElementById("dailyTotalAmount").innerText = `GHS${dailyTotal}`;
 }
