@@ -6,14 +6,15 @@
 <title>Liberty Gad Susu Enterprise - Collector Dashboard</title>
 <style>
 body { font-family: Arial, sans-serif; margin:20px; background:#f9f9f9; }
-h1 { color:#2c3e50; }
+h1, h2 { color:#2c3e50; }
 table { width: 100%; border-collapse: collapse; margin-top:20px; background:white; }
 th, td { border:1px solid #ccc; padding:8px; text-align:center; }
 th { background:#2c3e50; color:white; }
 tr:nth-child(even) { background:#f2f2f2; }
-button { padding:5px 10px; margin:5px; cursor:pointer; }
 input { padding:5px; margin:5px; }
+button { padding:5px 10px; margin:5px; cursor:pointer; }
 .penalty { color:red; font-weight:bold; }
+.daily-total { font-weight:bold; background:#f39c12; color:white; }
 </style>
 </head>
 <body>
@@ -43,6 +44,13 @@ input { padding:5px; margin:5px; }
     </tr>
   </thead>
   <tbody></tbody>
+  <tfoot>
+    <tr class="daily-total">
+      <td colspan="4">Daily Total</td>
+      <td id="dailyTotalAmount">0</td>
+      <td colspan="2"></td>
+    </tr>
+  </tfoot>
 </table>
 
 <script>
@@ -54,10 +62,7 @@ async function recordPayment() {
   const phone = document.getElementById("phone").value.trim();
   const weeks = Number(document.getElementById("weeks").value);
 
-  if(!member || !phone || !weeks) {
-    alert("Fill all fields!");
-    return;
-  }
+  if(!member || !phone || !weeks) { alert("Fill all fields!"); return; }
 
   const res = await fetch(`${backendURL}/pay`, {
     method: "POST",
@@ -75,7 +80,7 @@ async function recordPayment() {
     ${data.penalty ? '<span class="penalty">Penalty: Member not eligible for interest</span>' : 'Eligible for interest'}
   `;
 
-  loadMembers(); // refresh table
+  loadMembers();
 }
 
 // Load All Members
@@ -86,12 +91,28 @@ async function loadMembers() {
   const tbody = document.querySelector("#membersTable tbody");
   tbody.innerHTML = "";
 
+  let dailyTotal = 0;
+
   members.forEach(m => {
     const weeklyMarks = Object.entries(m.weeklyMarks || {})
                               .sort((a,b)=>a[0]-b[0])
                               .map(w=>`W${w[0]}:${w[1]}`).join(" | ");
 
-    const penaltyText = (Object.keys(m.weeklyMarks || {}).length < 5) ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
+    // Calculate amount today as last week's payment
+    const weekNumbers = Object.keys(m.weeklyMarks || {}).map(Number);
+    let amountToday = 0;
+    if(weekNumbers.length > 0) {
+      const lastWeek = Math.max(...weekNumbers);
+      const marksCount = m.weeklyMarks[lastWeek].length;
+      amountToday = marksCount * 50;
+    }
+    dailyTotal += amountToday;
+
+    // Penalty: missed 5+ weeks
+    const currentWeekNumber = new Date().getTime() - new Date("2026-01-03").getTime();
+    const weekNumber = Math.floor(currentWeekNumber / (7*24*60*60*1000)) + 1;
+    const missedWeeks = weekNumber - m.weeksPaid;
+    const penaltyText = (missedWeeks >= 5) ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
 
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -99,12 +120,14 @@ async function loadMembers() {
       <td>${m.phone}</td>
       <td>${m.weeksPaid}</td>
       <td>${weeklyMarks}</td>
-      <td>-</td>
+      <td>GHS${amountToday}</td>
       <td>GHS${m.gTotal}</td>
       <td>${penaltyText}</td>
     `;
     tbody.appendChild(tr);
   });
+
+  document.getElementById("dailyTotalAmount").innerText = `GHS${dailyTotal}`;
 }
 
 // Initial load
