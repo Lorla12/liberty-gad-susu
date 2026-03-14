@@ -11,8 +11,7 @@ async function recordPayment() {
     const data = { member, phone, weeks };
 
     // Replace with your Worker URL later
-    const workerUrl = "const workerUrl = "https://liberty-gad-susu-backend.gadesesamuel35.workers.dev/pay";";
-
+    const workerUrl = "https://liberty-gad-susu-backend.gadesesamuel35.workers.dev/pay";
     const res = await fetch(workerUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
