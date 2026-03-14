@@ -6,15 +6,15 @@
 <title>Liberty Gad Susu Enterprise</title>
 <style>
   body { font-family: Arial, sans-serif; margin: 20px; }
-  table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  .member-card { border: 1px solid #333; padding: 10px; margin-bottom: 20px; }
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; margin-top: 5px; }
   th, td { border: 1px solid #333; padding: 5px; text-align: center; font-size: 12px; }
   th { background: #eee; }
   td { cursor: pointer; }
   td:hover { background-color: #f0f0f0; }
-  input, button { padding: 5px; margin: 2px; }
   .penalty { color: red; font-weight: bold; }
   .eligible { color: green; font-weight: bold; }
-  #addMemberForm { margin-bottom: 10px; }
+  input, button { padding: 5px; margin: 2px; }
 </style>
 </head>
 <body>
@@ -26,32 +26,16 @@
   <button onclick="addMember()">Add Member</button>
 </div>
 
-<table id="membersTable">
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Name</th>
-      <th>Phone</th>
-      ${[...Array(51).keys()].map(i => `<th>W${i+1}</th>`).join("")}
-      <th>Weeks Paid</th>
-      <th>Amount Today</th>
-      <th>G.Total</th>
-      <th>Penalty</th>
-      <th>Actions</th>
-    </tr>
-  </thead>
-  <tbody id="membersBody"></tbody>
-</table>
+<div id="membersContainer"></div>
 
 <script>
 const backendURL = "https://liberty-gad-susu-backend.gadesesamuel35.workers.dev";
 
-// Load all members and render table
 async function loadMembers() {
   const res = await fetch(`${backendURL}/members`);
   const members = await res.json();
-  const tbody = document.getElementById("membersBody");
-  tbody.innerHTML = "";
+  const container = document.getElementById("membersContainer");
+  container.innerHTML = "";
 
   members.forEach(member => {
     const weekCells = [];
@@ -60,20 +44,27 @@ async function loadMembers() {
       weekCells.push(`<td onclick="updateWeek(${member.id},${i})">${mark}</td>`);
     }
 
-    tbody.innerHTML += `
-      <tr>
-        <td>${member.id}</td>
-        <td>${member.name}</td>
-        <td>${member.phone}</td>
-        ${weekCells.join("")}
-        <td>${member.weeksPaid}</td>
-        <td>GHS${member.amountToday || 0}</td>
-        <td>GHS${member.gTotal}</td>
-        <td class="${member.penalty ? 'penalty':'eligible'}">
-          ${member.penalty ? '❌ No interest' : '✅ Eligible'}
-        </td>
-        <td><button onclick="deleteMember('${member.name}')">Delete</button></td>
-      </tr>
+    container.innerHTML += `
+      <div class="member-card">
+        <strong>Member Name:</strong> ${member.name} &nbsp; 
+        <strong>Phone:</strong> ${member.phone} &nbsp;
+        <strong>ID:</strong> ${member.id} <br>
+        <strong>Weeks Paid:</strong> ${member.weeksPaid} &nbsp;
+        <strong>Amount Today:</strong> GHS${member.amountToday || 0} &nbsp;
+        <strong>G.Total:</strong> GHS${member.gTotal} &nbsp;
+        <strong>Penalty:</strong> <span class="${member.penalty?'penalty':'eligible'}">
+          ${member.penalty ? '❌ No interest':'✅ Eligible'}</span>
+        <button onclick="deleteMember('${member.name}')">Delete</button>
+
+        <table>
+          <thead>
+            <tr>${[...Array(51).keys()].map(i=>`<th>W${i+1}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            <tr>${weekCells.join("")}</tr>
+          </tbody>
+        </table>
+      </div>
     `;
   });
 }
