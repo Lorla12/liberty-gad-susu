@@ -1,131 +1,126 @@
-const weeklyRate = 50;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Liberty Gad Susu Enterprise</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  th, td { border: 1px solid #333; padding: 5px; text-align: center; font-size: 12px; }
+  th { background: #eee; }
+  td { cursor: pointer; }
+  td:hover { background-color: #f0f0f0; }
+  input, button { padding: 5px; margin: 2px; }
+  .penalty { color: red; font-weight: bold; }
+  .eligible { color: green; font-weight: bold; }
+  #addMemberForm { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+<h1>Liberty Gad Susu Enterprise - Collector Dashboard</h1>
 
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
+<div id="addMemberForm">
+  <input type="text" id="newName" placeholder="Member Name">
+  <input type="text" id="newPhone" placeholder="Phone Number">
+  <button onclick="addMember()">Add Member</button>
+</div>
 
-    // --- Handle CORS Preflight ---
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type"
-        }
-      });
+<table id="membersTable">
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Name</th>
+      <th>Phone</th>
+      ${[...Array(51).keys()].map(i => `<th>W${i+1}</th>`).join("")}
+      <th>Weeks Paid</th>
+      <th>Amount Today</th>
+      <th>G.Total</th>
+      <th>Penalty</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody id="membersBody"></tbody>
+</table>
+
+<script>
+const backendURL = "https://liberty-gad-susu-backend.gadesesamuel35.workers.dev";
+
+// Load all members and render table
+async function loadMembers() {
+  const res = await fetch(`${backendURL}/members`);
+  const members = await res.json();
+  const tbody = document.getElementById("membersBody");
+  tbody.innerHTML = "";
+
+  members.forEach(member => {
+    const weekCells = [];
+    for (let i=1; i<=51; i++){
+      const mark = member.weeklyMarks[i] || "";
+      weekCells.push(`<td onclick="updateWeek(${member.id},${i})">${mark}</td>`);
     }
 
-    // === Add New Member ===
-    if (request.method === "POST" && url.pathname === "/add-member") {
-      const data = await request.json();
-      const name = data.name.trim();
-      const phone = data.phone.trim();
-
-      if (!name || !phone) {
-        return new Response(JSON.stringify({ success: false, message: "Name and phone required" }), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-
-      const exists = await env.MEMBERS.get(name);
-      if (exists) {
-        return new Response(JSON.stringify({ success: false, message: "Member already exists" }), {
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-        });
-      }
-
-      const record = { name, phone, weeksPaid: 0, gTotal: 0, weeklyMarks: {} };
-      await env.MEMBERS.put(name, JSON.stringify(record));
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-      });
-    }
-
-    // === Delete Member ===
-    if (request.method === "POST" && url.pathname === "/delete-member") {
-      const data = await request.json();
-      const name = data.name.trim();
-      await env.MEMBERS.delete(name);
-
-      return new Response(JSON.stringify({ success: true }), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-      });
-    }
-
-    // === Record Payment ===
-    if (request.method === "POST" && url.pathname === "/pay") {
-      const data = await request.json();
-      const member = data.member.trim();
-      const phone = data.phone;
-      const weeksPaid = Number(data.weeks);
-
-      const marks = ["✓","×","○","△","★"];
-      const weekNumber = getWeekNumber();
-      const todayMark = marks[weekNumber % marks.length];
-
-      // Load member
-      let record = await env.MEMBERS.get(member);
-      if (record) {
-        record = JSON.parse(record);
-      } else {
-        // If member not found, create a new one automatically
-        record = { name: member, phone, weeksPaid: 0, gTotal: 0, weeklyMarks: {} };
-      }
-
-      // Update weekly marks
-      record.weeklyMarks[weekNumber] = todayMark.repeat(weeksPaid);
-
-      // Update totals
-      record.weeksPaid += weeksPaid;
-      record.gTotal += weeksPaid * weeklyRate;
-
-      // Penalty for missed 5+ weeks (no interest)
-      const missedWeeks = weekNumber - record.weeksPaid;
-      const penalty = missedWeeks >= 5;
-
-      await env.MEMBERS.put(member, JSON.stringify(record));
-
-      return new Response(JSON.stringify({
-        mark: record.weeklyMarks[weekNumber],
-        amount: weeksPaid * weeklyRate,
-        gTotal: record.gTotal,
-        penalty: penalty
-      }), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-      });
-    }
-
-    // === List All Members ===
-    if (request.method === "GET" && url.pathname === "/members") {
-      const list = [];
-      let cursor; // for pagination
-      do {
-        const page = await env.MEMBERS.list({ cursor });
-        cursor = page.cursor;
-        for (const key of page.keys) {
-          const m = await env.MEMBERS.get(key.name);
-          if (m) list.push(JSON.parse(m));
-        }
-      } while (cursor);
-
-      return new Response(JSON.stringify(list), {
-        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-      });
-    }
-
-    // Default response
-    return new Response("Liberty Gad Susu API Running", {
-      headers: { "Content-Type": "text/plain", "Access-Control-Allow-Origin": "*" }
-    });
-  }
-};
-
-// === Calculate week number since Jan 3, 2026 ===
-function getWeekNumber() {
-  const start = new Date("2026-01-03");
-  const today = new Date();
-  const diff = today.getTime() - start.getTime();
-  const week = Math.floor(diff / (7 * 24 * 60 * 60 * 1000)) + 1;
-  return week;
+    tbody.innerHTML += `
+      <tr>
+        <td>${member.id}</td>
+        <td>${member.name}</td>
+        <td>${member.phone}</td>
+        ${weekCells.join("")}
+        <td>${member.weeksPaid}</td>
+        <td>GHS${member.amountToday || 0}</td>
+        <td>GHS${member.gTotal}</td>
+        <td class="${member.penalty ? 'penalty':'eligible'}">
+          ${member.penalty ? '❌ No interest' : '✅ Eligible'}
+        </td>
+        <td><button onclick="deleteMember('${member.name}')">Delete</button></td>
+      </tr>
+    `;
+  });
 }
+
+// Add new member
+async function addMember() {
+  const name = document.getElementById("newName").value.trim();
+  const phone = document.getElementById("newPhone").value.trim();
+  if(!name || !phone) return alert("Name and phone required");
+
+  await fetch(`${backendURL}/add-member`, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name, phone})
+  });
+  document.getElementById("newName").value = "";
+  document.getElementById("newPhone").value = "";
+  loadMembers();
+}
+
+// Delete member
+async function deleteMember(name){
+  if(!confirm(`Delete member ${name}?`)) return;
+  await fetch(`${backendURL}/delete-member`, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name})
+  });
+  loadMembers();
+}
+
+// Handle week cell click
+async function updateWeek(memberId, weekNumber){
+  const marksCount = prompt("How many weeks paid for this week?");
+  if(!marksCount) return;
+
+  await fetch(`${backendURL}/pay-week`, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ memberId, weekNumber, marksCount: Number(marksCount) })
+  });
+
+  loadMembers();
+}
+
+// Initial load
+loadMembers();
+</script>
+</body>
+</html>
