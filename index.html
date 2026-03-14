@@ -21,7 +21,23 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
 
 <h1>Liberty Gad Susu Enterprise - Collector Dashboard</h1>
 
+<!-- Add Member -->
 <div>
+  <h3>Add New Member</h3>
+  <input id="newMemberName" placeholder="Member Name">
+  <input id="newMemberPhone" placeholder="Phone Number">
+  <button onclick="addMember()">Add Member</button>
+</div>
+
+<!-- Search -->
+<div>
+  <h3>Search Members</h3>
+  <input id="searchQuery" placeholder="Search by name or phone" oninput="loadMembers()">
+</div>
+
+<!-- Record Payment -->
+<div>
+  <h3>Record Payment</h3>
   <input id="member" placeholder="Member Name">
   <input id="phone" placeholder="Phone Number">
   <input id="weeks" type="number" placeholder="Weeks Paid">
@@ -41,6 +57,7 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
       <th>Amount Today</th>
       <th>G.Total</th>
       <th>Penalty</th>
+      <th>Actions</th>
     </tr>
   </thead>
   <tbody></tbody>
@@ -48,13 +65,49 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
     <tr class="daily-total">
       <td colspan="4">Daily Total</td>
       <td id="dailyTotalAmount">0</td>
-      <td colspan="2"></td>
+      <td colspan="3"></td>
     </tr>
   </tfoot>
 </table>
 
 <script>
 const backendURL = "https://liberty-gad-susu-backend.gadesesamuel35.workers.dev";
+const weeklyRate = 50;
+
+// Add a new member
+async function addMember() {
+  const name = document.getElementById("newMemberName").value.trim();
+  const phone = document.getElementById("newMemberPhone").value.trim();
+  if(!name || !phone) { alert("Fill all fields!"); return; }
+
+  const res = await fetch(`${backendURL}/add-member`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, phone })
+  });
+  const data = await res.json();
+  if(data.success){
+    alert("Member added successfully!");
+    document.getElementById("newMemberName").value = "";
+    document.getElementById("newMemberPhone").value = "";
+    loadMembers();
+  }
+}
+
+// Delete member
+async function deleteMember(name){
+  if(!confirm(`Delete member ${name}?`)) return;
+  const res = await fetch(`${backendURL}/delete-member`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+  const data = await res.json();
+  if(data.success){
+    alert("Member deleted successfully!");
+    loadMembers();
+  }
+}
 
 // Record Payment
 async function recordPayment() {
@@ -85,6 +138,7 @@ async function recordPayment() {
 
 // Load All Members
 async function loadMembers() {
+  const searchQuery = document.getElementById("searchQuery").value.toLowerCase();
   const res = await fetch(`${backendURL}/members`);
   const members = await res.json();
 
@@ -93,39 +147,44 @@ async function loadMembers() {
 
   let dailyTotal = 0;
 
-  members.forEach(m => {
-    const weeklyMarks = Object.entries(m.weeklyMarks || {})
-                              .sort((a,b)=>a[0]-b[0])
-                              .map(w=>`W${w[0]}:${w[1]}`).join(" | ");
+  members
+    .filter(m => m.name.toLowerCase().includes(searchQuery) || m.phone.includes(searchQuery))
+    .forEach(m => {
+      const weeklyMarks = Object.entries(m.weeklyMarks || {})
+                                .sort((a,b)=>a[0]-b[0])
+                                .map(w=>`W${w[0]}:${w[1]}`).join(" | ");
 
-    // Calculate amount today as last week's payment
-    const weekNumbers = Object.keys(m.weeklyMarks || {}).map(Number);
-    let amountToday = 0;
-    if(weekNumbers.length > 0) {
-      const lastWeek = Math.max(...weekNumbers);
-      const marksCount = m.weeklyMarks[lastWeek].length;
-      amountToday = marksCount * 50;
-    }
-    dailyTotal += amountToday;
+      // Amount today is latest week's payment
+      const weekNumbers = Object.keys(m.weeklyMarks || {}).map(Number);
+      let amountToday = 0;
+      if(weekNumbers.length > 0){
+        const lastWeek = Math.max(...weekNumbers);
+        const marksCount = m.weeklyMarks[lastWeek].length;
+        amountToday = marksCount * weeklyRate;
+      }
+      dailyTotal += amountToday;
 
-    // Penalty: missed 5+ weeks
-    const currentWeekNumber = new Date().getTime() - new Date("2026-01-03").getTime();
-    const weekNumber = Math.floor(currentWeekNumber / (7*24*60*60*1000)) + 1;
-    const missedWeeks = weekNumber - m.weeksPaid;
-    const penaltyText = (missedWeeks >= 5) ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
+      // Penalty: missed 5+ weeks
+      const currentWeekNumber = new Date().getTime() - new Date("2026-01-03").getTime();
+      const weekNumber = Math.floor(currentWeekNumber / (7*24*60*60*1000)) + 1;
+      const missedWeeks = weekNumber - m.weeksPaid;
+      const penaltyText = (missedWeeks >= 5) ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
 
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${m.name}</td>
-      <td>${m.phone}</td>
-      <td>${m.weeksPaid}</td>
-      <td>${weeklyMarks}</td>
-      <td>GHS${amountToday}</td>
-      <td>GHS${m.gTotal}</td>
-      <td>${penaltyText}</td>
-    `;
-    tbody.appendChild(tr);
-  });
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${m.name}</td>
+        <td>${m.phone}</td>
+        <td>${m.weeksPaid}</td>
+        <td>${weeklyMarks}</td>
+        <td>GHS${amountToday}</td>
+        <td>GHS${m.gTotal}</td>
+        <td>${penaltyText}</td>
+        <td>
+          <button onclick="deleteMember('${m.name}')">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
 
   document.getElementById("dailyTotalAmount").innerText = `GHS${dailyTotal}`;
 }
