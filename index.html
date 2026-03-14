@@ -38,8 +38,7 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
 <!-- Record Payment -->
 <div>
   <h3>Record Payment</h3>
-  <input id="member" placeholder="Member Name">
-  <input id="phone" placeholder="Phone Number">
+  <input id="memberId" placeholder="Member ID">
   <input id="weeks" type="number" placeholder="Weeks Paid">
   <button onclick="recordPayment()">Record Payment</button>
 </div>
@@ -50,6 +49,7 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
 <table id="membersTable">
   <thead>
     <tr>
+      <th>ID</th>
       <th>Member</th>
       <th>Phone</th>
       <th>Weeks Paid</th>
@@ -63,7 +63,7 @@ button { padding:5px 10px; margin:5px; cursor:pointer; }
   <tbody></tbody>
   <tfoot>
     <tr class="daily-total">
-      <td colspan="4">Daily Total</td>
+      <td colspan="5">Daily Total</td>
       <td id="dailyTotalAmount">0</td>
       <td colspan="3"></td>
     </tr>
@@ -87,7 +87,7 @@ async function addMember() {
   });
   const data = await res.json();
   if(data.success){
-    alert("Member added successfully!");
+    alert("Member added successfully! ID: " + data.id);
     document.getElementById("newMemberName").value = "";
     document.getElementById("newMemberPhone").value = "";
     loadMembers();
@@ -95,12 +95,12 @@ async function addMember() {
 }
 
 // Delete member
-async function deleteMember(name){
-  if(!confirm(`Delete member ${name}?`)) return;
+async function deleteMember(id){
+  if(!confirm(`Delete member ${id}?`)) return;
   const res = await fetch(`${backendURL}/delete-member`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ id })
   });
   const data = await res.json();
   if(data.success){
@@ -111,16 +111,15 @@ async function deleteMember(name){
 
 // Record Payment
 async function recordPayment() {
-  const member = document.getElementById("member").value.trim();
-  const phone = document.getElementById("phone").value.trim();
+  const id = document.getElementById("memberId").value.trim();
   const weeks = Number(document.getElementById("weeks").value);
 
-  if(!member || !phone || !weeks) { alert("Fill all fields!"); return; }
+  if(!id || !weeks) { alert("Fill all fields!"); return; }
 
   const res = await fetch(`${backendURL}/pay`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ member, phone, weeks })
+    body: JSON.stringify({ id, weeks })
   });
 
   const data = await res.json();
@@ -130,7 +129,7 @@ async function recordPayment() {
     Marks Today: ${data.mark}<br>
     Amount Today: GHS${data.amount}<br>
     G.Total: GHS${data.gTotal}<br>
-    ${data.penalty ? '<span class="penalty">Penalty: Member not eligible for interest</span>' : 'Eligible for interest'}
+    ${data.penalty ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible for interest'}
   `;
 
   loadMembers();
@@ -165,13 +164,13 @@ async function loadMembers() {
       dailyTotal += amountToday;
 
       // Penalty: missed 5+ weeks
-      const currentWeekNumber = new Date().getTime() - new Date("2026-01-03").getTime();
-      const weekNumber = Math.floor(currentWeekNumber / (7*24*60*60*1000)) + 1;
+      const weekNumber = Math.floor((new Date().getTime() - new Date("2026-01-03").getTime()) / (7*24*60*60*1000)) + 1;
       const missedWeeks = weekNumber - m.weeksPaid;
       const penaltyText = (missedWeeks >= 5) ? '<span class="penalty">❌ No interest</span>' : '✅ Eligible';
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
+        <td>${m.id}</td>
         <td>${m.name}</td>
         <td>${m.phone}</td>
         <td>${m.weeksPaid}</td>
@@ -180,7 +179,7 @@ async function loadMembers() {
         <td>GHS${m.gTotal}</td>
         <td>${penaltyText}</td>
         <td>
-          <button onclick="deleteMember('${m.name}')">Delete</button>
+          <button onclick="deleteMember('${m.id}')">Delete</button>
         </td>
       `;
       tbody.appendChild(tr);
